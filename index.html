@@ -310,11 +310,11 @@
 
       // Add irregular bites taken out of edges - makes them ragged not uniform
       mctx.globalCompositeOperation = 'destination-out';
-      const numBites = 8 + Math.floor(Math.random() * 8);
+      const numBites = 3 + Math.floor(Math.random() * 4);
       for (let i = 0; i < numBites; i++) {
         const side = Math.floor(Math.random() * 4);
         let bx, by, br;
-        const biteSize = blurRadius * (0.4 + Math.random() * 0.8);
+        const biteSize = blurRadius * (0.2 + Math.random() * 0.35);
         if (side === 0) { // top
           bx = pad + Math.random() * w;
           by = pad + insetTop;
@@ -333,7 +333,7 @@
           br = biteSize;
         }
         const grad = mctx.createRadialGradient(bx, by, 0, bx, by, br);
-        grad.addColorStop(0, 'rgba(255,255,255,1)');
+        grad.addColorStop(0, 'rgba(255,255,255,0.6)');
         grad.addColorStop(1, 'rgba(255,255,255,0)');
         mctx.fillStyle = grad;
         mctx.fillRect(bx - br, by - br, br * 2, br * 2);
@@ -426,8 +426,8 @@
       if (Math.random() > 0.5) rects.reverse();
 
       // Random proportions — top-heavy, bottom-heavy, or balanced
-      const totalH = H * (0.68 + Math.random() * 0.14); // 68–82% of canvas
-      const pad = W * (0.06 + Math.random() * 0.06);     // 6–12% side padding
+      const totalH = H * (0.78 + Math.random() * 0.12); // 78–90% of canvas
+      const pad = W * (0.025 + Math.random() * 0.03);    // 2.5–5.5% side padding
       const rw = W - pad*2;
       const gap = H * (0.005 + Math.random() * 0.008);   // very tight, almost touching
 

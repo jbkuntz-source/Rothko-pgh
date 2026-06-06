@@ -53,6 +53,7 @@
       display: block;
       border-radius: 2px;
       box-shadow: 0 8px 48px rgba(0,0,0,0.75), 0 2px 12px rgba(0,0,0,0.5);
+      transition: opacity 0.4s ease;
     }
     #status-msg { color: #555; font-size: 13px; letter-spacing: 0.08em; font-style: italic; text-align: center; }
     #error-detail { color: #664444; font-size: 11px; letter-spacing: 0.05em; text-align: center; max-width: 260px; line-height: 1.6; }
@@ -101,7 +102,7 @@
       </div>
     </div>
     <div class="byline">Mark Rothko · American, 1903–1970 · Inspired by rothko.joonas.wtf</div>
-    <button id="refresh-btn" onclick="init()">Refresh</button>
+    <button id="refresh-btn" onclick="repaint()">New painting</button>
   </footer>
 
   <script>
@@ -145,38 +146,45 @@
       return PALETTES.overcast;
     }
 
-    function hexRgb(hex) {
-      return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+    function hexRgb(h) {
+      return [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+    }
+
+    // Shift a color slightly — varies hue/brightness within a range
+    function shiftColor(hex, amount) {
+      let [r,g,b] = hexRgb(hex);
+      const dr = (Math.random()-0.5)*2*amount;
+      const dg = (Math.random()-0.5)*2*amount;
+      const db = (Math.random()-0.5)*2*amount;
+      r = Math.max(0,Math.min(255,r+dr));
+      g = Math.max(0,Math.min(255,g+dg));
+      b = Math.max(0,Math.min(255,b+db));
+      return `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`;
     }
 
     function softRect(ctx, x, y, w, h, color, softness) {
-      const [r,g,b] = hexRgb(color);
+      const [r,g,b] = typeof color === 'string' && color.startsWith('#') ? hexRgb(color) : [0,0,0];
+      const rgb = color.startsWith('#') ? `${r},${g},${b}` : color.replace(/rgb\(|\)/g,'');
       const m = Math.min(w,h) * softness;
       ctx.fillStyle = color;
       ctx.fillRect(x+m, y+m, w-m*2, h-m*2);
-      // top fade
-      let gr = ctx.createLinearGradient(0,y,0,y+m*2);
-      gr.addColorStop(0,`rgba(${r},${g},${b},0)`); gr.addColorStop(1,`rgba(${r},${g},${b},1)`);
-      ctx.fillStyle=gr; ctx.fillRect(x,y,w,m*2);
-      // bottom fade
-      gr = ctx.createLinearGradient(0,y+h-m*2,0,y+h);
-      gr.addColorStop(0,`rgba(${r},${g},${b},1)`); gr.addColorStop(1,`rgba(${r},${g},${b},0)`);
-      ctx.fillStyle=gr; ctx.fillRect(x,y+h-m*2,w,m*2);
-      // left fade
-      gr = ctx.createLinearGradient(x,0,x+m*2,0);
-      gr.addColorStop(0,`rgba(${r},${g},${b},0)`); gr.addColorStop(1,`rgba(${r},${g},${b},1)`);
-      ctx.fillStyle=gr; ctx.fillRect(x,y,m*2,h);
-      // right fade
-      gr = ctx.createLinearGradient(x+w-m*2,0,x+w,0);
-      gr.addColorStop(0,`rgba(${r},${g},${b},1)`); gr.addColorStop(1,`rgba(${r},${g},${b},0)`);
-      ctx.fillStyle=gr; ctx.fillRect(x+w-m*2,y,m*2,h);
+      const makeGrad = (x1,y1,x2,y2,startAlpha,endAlpha) => {
+        const gr = ctx.createLinearGradient(x1,y1,x2,y2);
+        gr.addColorStop(0, `rgba(${rgb},${startAlpha})`);
+        gr.addColorStop(1, `rgba(${rgb},${endAlpha})`);
+        return gr;
+      };
+      ctx.fillStyle = makeGrad(0,y,0,y+m*2,0,1);         ctx.fillRect(x,y,w,m*2);
+      ctx.fillStyle = makeGrad(0,y+h-m*2,0,y+h,1,0);     ctx.fillRect(x,y+h-m*2,w,m*2);
+      ctx.fillStyle = makeGrad(x,0,x+m*2,0,0,1);         ctx.fillRect(x,y,m*2,h);
+      ctx.fillStyle = makeGrad(x+w-m*2,0,x+w,0,1,0);     ctx.fillRect(x+w-m*2,y,m*2,h);
     }
 
     function addGrain(ctx, w, h) {
       const id = ctx.getImageData(0,0,w,h);
       const d = id.data;
       for (let i=0;i<d.length;i+=4) {
-        const n=(Math.random()-0.5)*18;
+        const n=(Math.random()-0.5)*22;
         d[i]=Math.max(0,Math.min(255,d[i]+n));
         d[i+1]=Math.max(0,Math.min(255,d[i+1]+n));
         d[i+2]=Math.max(0,Math.min(255,d[i+2]+n));
@@ -184,31 +192,85 @@
       ctx.putImageData(id,0,0);
     }
 
+    let currentPalette = null;
+
     function paint(palette) {
       const canvas = document.getElementById('canvas');
       const W=600, H=800;
       canvas.width=W; canvas.height=H;
       const ctx = canvas.getContext('2d');
+
+      // Field: shift the background color slightly each time
+      const fieldShifted = shiftColor(palette.field, 18);
       const [fr,fg,fb] = hexRgb(palette.field);
       const bg = ctx.createLinearGradient(0,0,0,H);
-      bg.addColorStop(0,`rgb(${Math.min(255,fr+14)},${Math.min(255,fg+14)},${Math.min(255,fb+14)})`);
-      bg.addColorStop(0.5, palette.field);
-      bg.addColorStop(1,`rgb(${Math.max(0,fr-14)},${Math.max(0,fg-14)},${Math.max(0,fb-14)})`);
-      ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
-      const rects=palette.rects, n=rects.length;
-      const pad=W*0.08, rw=W-pad*2, gap=H*0.03, totalH=H*0.76;
-      const heights = n===2 ? [totalH*0.38,totalH*0.52] : [totalH*0.22,totalH*0.35,totalH*0.33];
-      const used = heights.reduce((a,b)=>a+b,0)+gap*(n-1);
-      let cy=(H-used)/2;
-      for(let i=0;i<n;i++){
-        softRect(ctx,pad,cy,rw,heights[i],rects[i],0.13+Math.random()*0.06);
-        cy+=heights[i]+gap;
+      // Randomise which end is lighter/darker
+      const flip = Math.random() > 0.5;
+      bg.addColorStop(0, shiftColor(palette.field, flip ? 24 : 8));
+      bg.addColorStop(0.5, shiftColor(palette.field, 10));
+      bg.addColorStop(1, shiftColor(palette.field, flip ? 8 : 24));
+      ctx.fillStyle = bg;
+      ctx.fillRect(0,0,W,H);
+
+      // Decide composition: 2 or 3 rects, weighted toward 3
+      const n = Math.random() < 0.3 ? 2 : 3;
+      const rects = palette.rects.slice(0, n);
+
+      // Randomise order of rects
+      if (Math.random() > 0.5) rects.reverse();
+
+      // Random proportions — top-heavy, bottom-heavy, or balanced
+      const totalH = H * (0.68 + Math.random() * 0.14); // 68–82% of canvas
+      const pad = W * (0.06 + Math.random() * 0.06);     // 6–12% side padding
+      const rw = W - pad*2;
+      const gap = H * (0.02 + Math.random() * 0.03);
+
+      let heights;
+      if (n === 2) {
+        const split = 0.35 + Math.random() * 0.3; // 35–65%
+        heights = [totalH * split, totalH * (1-split)];
+      } else {
+        // Three rects: vary the weight distribution
+        const a = 0.15 + Math.random() * 0.2;
+        const b = 0.25 + Math.random() * 0.2;
+        const c = 1 - a - b;
+        heights = [totalH*a, totalH*b, totalH*c];
+        if (Math.random() > 0.5) heights.sort((x,y)=>x-y); // small→large
+        else heights.sort((x,y)=>y-x);                      // large→small
       }
-      addGrain(ctx,W,H);
+
+      // Vertical position: slightly high, centered, or slightly low
+      const vBias = (Math.random() - 0.5) * H * 0.08;
+      const used = heights.reduce((a,b)=>a+b,0) + gap*(n-1);
+      let cy = (H - used) / 2 + vBias;
+
+      for (let i=0; i<n; i++) {
+        // Shift each rect color slightly for variation
+        const col = shiftColor(rects[i], 28);
+        const softness = 0.10 + Math.random() * 0.10;
+        softRect(ctx, pad, cy, rw, heights[i], col, softness);
+        cy += heights[i] + gap;
+      }
+
+      addGrain(ctx, W, H);
+
       canvas.style.display='block';
       document.getElementById('status-msg').style.display='none';
       document.getElementById('error-detail').style.display='none';
       document.getElementById('footer-data').style.display='flex';
+    }
+
+    function repaint() {
+      if (currentPalette) {
+        const canvas = document.getElementById('canvas');
+        canvas.style.opacity = '0';
+        setTimeout(() => {
+          paint(currentPalette);
+          canvas.style.opacity = '1';
+        }, 300);
+      } else {
+        init();
+      }
     }
 
     function updateClock() {
@@ -220,7 +282,6 @@
     }
 
     async function init() {
-      // Reset UI
       document.getElementById('canvas').style.display='none';
       document.getElementById('footer-data').style.display='none';
       document.getElementById('error-detail').style.display='none';
@@ -248,25 +309,23 @@
         document.getElementById('temp-line').textContent = `${tempF}°F · ${Math.round(tempC)}°C`;
         document.getElementById('condition-val').textContent = WMO[code] || `Code ${code}`;
 
-        const palette = getPalette(code, isDay, tempC);
-        document.getElementById('mood-val').textContent = palette.mood;
-        paint(palette);
+        currentPalette = getPalette(code, isDay, tempC);
+        document.getElementById('mood-val').textContent = currentPalette.mood;
+        paint(currentPalette);
 
       } catch(e) {
-        // Show a painting anyway in "unknowable" palette, note the error
+        currentPalette = PALETTES.unknown;
         document.getElementById('status-msg').style.display='none';
         document.getElementById('error-detail').style.display='block';
-        document.getElementById('error-detail').textContent =
-          'Weather unavailable — painting from memory.';
+        document.getElementById('error-detail').textContent = 'Weather unavailable — painting from memory.';
         document.getElementById('condition-val').textContent = '—';
         document.getElementById('mood-val').textContent = 'unknowable';
         document.getElementById('footer-data').style.display='flex';
-        paint(PALETTES.unknown);
+        paint(currentPalette);
       }
     }
 
     if ('serviceWorker' in navigator) {
-      // Unregister old service workers, then register fresh
       navigator.serviceWorker.getRegistrations().then(regs => {
         Promise.all(regs.map(r => r.unregister())).then(() => {
           navigator.serviceWorker.register('sw.js');

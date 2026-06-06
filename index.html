@@ -162,26 +162,67 @@
       return `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`;
     }
 
-    function softRect(ctx, x, y, w, h, color, softness) {
-      // Draw on an offscreen canvas then blur — this gives true soft edges
-      // including corners, exactly like Rothko's actual painted edges.
-      const blur = Math.round(Math.min(w, h) * softness);
-      const pad  = blur * 2;
+    // Fast single-pass box blur on an offscreen canvas (works on iOS Safari)
+    function boxBlur(imageData, radius) {
+      const { data, width, height } = imageData;
+      const out = new Uint8ClampedArray(data);
+      const r = Math.floor(radius);
+      const size = 2 * r + 1;
 
-      const oc  = document.createElement('canvas');
-      oc.width  = w + pad * 2;
-      oc.height = h + pad * 2;
+      // Horizontal pass
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          let rSum=0, gSum=0, bSum=0, aSum=0, count=0;
+          for (let dx = -r; dx <= r; dx++) {
+            const nx = Math.min(width-1, Math.max(0, x+dx));
+            const i = (y*width+nx)*4;
+            rSum+=data[i]; gSum+=data[i+1]; bSum+=data[i+2]; aSum+=data[i+3];
+            count++;
+          }
+          const i=(y*width+x)*4;
+          out[i]=rSum/count; out[i+1]=gSum/count; out[i+2]=bSum/count; out[i+3]=aSum/count;
+        }
+      }
+
+      // Vertical pass (read from out, write back to out via temp)
+      const tmp = new Uint8ClampedArray(out);
+      for (let x = 0; x < width; x++) {
+        for (let y = 0; y < height; y++) {
+          let rSum=0, gSum=0, bSum=0, aSum=0, count=0;
+          for (let dy = -r; dy <= r; dy++) {
+            const ny = Math.min(height-1, Math.max(0, y+dy));
+            const i = (ny*width+x)*4;
+            rSum+=out[i]; gSum+=out[i+1]; bSum+=out[i+2]; aSum+=out[i+3];
+            count++;
+          }
+          const i=(y*width+x)*4;
+          tmp[i]=rSum/count; tmp[i+1]=gSum/count; tmp[i+2]=bSum/count; tmp[i+3]=aSum/count;
+        }
+      }
+      return new ImageData(tmp, width, height);
+    }
+
+    function softRect(ctx, x, y, w, h, color, softness) {
+      const blurRadius = Math.round(Math.min(w, h) * softness);
+      const pad = blurRadius * 2;
+      const ow = w + pad * 2;
+      const oh = h + pad * 2;
+
+      const oc = document.createElement('canvas');
+      oc.width = ow;
+      oc.height = oh;
       const octx = oc.getContext('2d');
 
       octx.fillStyle = color;
       octx.fillRect(pad, pad, w, h);
 
-      // Apply CSS blur to the offscreen canvas via filter
-      ctx.save();
-      ctx.filter = `blur(${blur}px)`;
+      // Run two blur passes for softer, more Rothko-like edges
+      let id = octx.getImageData(0, 0, ow, oh);
+      id = boxBlur(id, blurRadius * 0.6);
+      id = boxBlur(id, blurRadius * 0.4);
+      octx.putImageData(id, 0, 0);
+
       ctx.drawImage(oc, x - pad, y - pad);
-      ctx.filter = 'none';
-      ctx.restore();
     }
 
     function addGrain(ctx, w, h) {

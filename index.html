@@ -163,21 +163,25 @@
     }
 
     function softRect(ctx, x, y, w, h, color, softness) {
-      const [r,g,b] = typeof color === 'string' && color.startsWith('#') ? hexRgb(color) : [0,0,0];
-      const rgb = color.startsWith('#') ? `${r},${g},${b}` : color.replace(/rgb\(|\)/g,'');
-      const m = Math.min(w,h) * softness;
-      ctx.fillStyle = color;
-      ctx.fillRect(x+m, y+m, w-m*2, h-m*2);
-      const makeGrad = (x1,y1,x2,y2,startAlpha,endAlpha) => {
-        const gr = ctx.createLinearGradient(x1,y1,x2,y2);
-        gr.addColorStop(0, `rgba(${rgb},${startAlpha})`);
-        gr.addColorStop(1, `rgba(${rgb},${endAlpha})`);
-        return gr;
-      };
-      ctx.fillStyle = makeGrad(0,y,0,y+m*2,0,1);         ctx.fillRect(x,y,w,m*2);
-      ctx.fillStyle = makeGrad(0,y+h-m*2,0,y+h,1,0);     ctx.fillRect(x,y+h-m*2,w,m*2);
-      ctx.fillStyle = makeGrad(x,0,x+m*2,0,0,1);         ctx.fillRect(x,y,m*2,h);
-      ctx.fillStyle = makeGrad(x+w-m*2,0,x+w,0,1,0);     ctx.fillRect(x+w-m*2,y,m*2,h);
+      // Draw on an offscreen canvas then blur — this gives true soft edges
+      // including corners, exactly like Rothko's actual painted edges.
+      const blur = Math.round(Math.min(w, h) * softness);
+      const pad  = blur * 2;
+
+      const oc  = document.createElement('canvas');
+      oc.width  = w + pad * 2;
+      oc.height = h + pad * 2;
+      const octx = oc.getContext('2d');
+
+      octx.fillStyle = color;
+      octx.fillRect(pad, pad, w, h);
+
+      // Apply CSS blur to the offscreen canvas via filter
+      ctx.save();
+      ctx.filter = `blur(${blur}px)`;
+      ctx.drawImage(oc, x - pad, y - pad);
+      ctx.filter = 'none';
+      ctx.restore();
     }
 
     function addGrain(ctx, w, h) {

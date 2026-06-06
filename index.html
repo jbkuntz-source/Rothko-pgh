@@ -195,78 +195,158 @@
       return hexRgb(hex);
     }
 
-    function paintRect(ctx, x, y, w, h, color, softness) {
+    function paintRect(ctx, x, y, w, h, color, softness, fieldColor) {
       const [r,g,b] = hexRgbArr(color);
+      const [fr,fg,fb] = hexRgbArr(fieldColor);
       const blurRadius = Math.round(Math.min(w,h) * softness);
-      const pad = blurRadius * 2 + 20;
+      const pad = blurRadius * 2 + 30;
       const ow = w + pad*2, oh = h + pad*2;
 
       const oc = document.createElement('canvas');
       oc.width = ow; oc.height = oh;
       const octx = oc.getContext('2d');
 
-      // ── Layer 1: base wash, slightly transparent ──────────────────────────
-      octx.fillStyle = `rgba(${r},${g},${b},0.55)`;
-      octx.fillRect(pad, pad, w, h);
+      // Rothko's method: 8-15 thin glazes built up. Each layer is mostly
+      // transparent. The cumulative effect creates the inner glow.
 
-      // ── Layer 2: horizontal brush strokes ─────────────────────────────────
-      // Rothko applied paint in thin horizontal passes; simulate with
-      // slightly offset, semi-transparent filled strips of varying width
-      const numStrokes = 18 + Math.floor(Math.random() * 14);
-      for (let i = 0; i < numStrokes; i++) {
-        const sy    = pad + Math.random() * h;
-        const sh    = 4 + Math.random() * (h / numStrokes) * 1.8;
-        const sx    = pad + (Math.random() - 0.5) * w * 0.12;
-        const sw    = w * (0.7 + Math.random() * 0.35);
-        const dr    = (Math.random()-0.5)*30;
-        const dg    = (Math.random()-0.5)*30;
-        const db    = (Math.random()-0.5)*30;
-        const alpha = 0.08 + Math.random() * 0.18;
-        octx.fillStyle = `rgba(${Math.round(Math.max(0,Math.min(255,r+dr)))},${Math.round(Math.max(0,Math.min(255,g+dg)))},${Math.round(Math.max(0,Math.min(255,b+db)))},${alpha})`;
-        octx.fillRect(sx, sy, sw, sh);
-      }
+      // ── Layer 1: very thin underwash, larger than final shape ─────────────
+      // This creates the "halo" around the rectangle
+      octx.fillStyle = `rgba(${r},${g},${b},0.15)`;
+      octx.fillRect(pad - 10, pad - 10, w + 20, h + 20);
 
-      // ── Layer 3: color pooling / wash variation ───────────────────────────
-      // Lighter and darker patches within the rect, like diluted paint pooling
-      const numPools = 5 + Math.floor(Math.random() * 5);
-      for (let i = 0; i < numPools; i++) {
-        const px = pad + Math.random() * w;
-        const py = pad + Math.random() * h;
-        const pr = w * (0.15 + Math.random() * 0.35);
-        const lighter = Math.random() > 0.5;
-        const shift = 25 + Math.random() * 35;
-        const alpha = 0.06 + Math.random() * 0.12;
-        const pr2 = r + (lighter ? shift : -shift);
-        const pg2 = g + (lighter ? shift : -shift);
-        const pb2 = b + (lighter ? shift : -shift);
-        const grad = octx.createRadialGradient(px,py,0,px,py,pr);
-        grad.addColorStop(0, `rgba(${Math.round(Math.max(0,Math.min(255,pr2)))},${Math.round(Math.max(0,Math.min(255,pg2)))},${Math.round(Math.max(0,Math.min(255,pb2)))},${alpha})`);
-        grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      // ── Layer 2: complementary undertone for luminosity ───────────────────
+      // Slightly shifted hue underneath - this is what makes Rothko colors glow
+      const undertone_r = Math.round((r + fr) / 2);
+      const undertone_g = Math.round((g + fg) / 2);
+      const undertone_b = Math.round((b + fb) / 2);
+      octx.fillStyle = `rgba(${undertone_r},${undertone_g},${undertone_b},0.35)`;
+      octx.fillRect(pad - 5, pad - 5, w + 10, h + 10);
+
+      // ── Layer 3-8: many thin painterly washes ────────────────────────────
+      // Each wash is a region of the rectangle painted with low opacity
+      // in a slightly varied color. Builds up density unevenly.
+      const numWashes = 12 + Math.floor(Math.random() * 8);
+      for (let i = 0; i < numWashes; i++) {
+        // Each wash covers a random irregular region
+        const wx = pad + (Math.random() - 0.15) * w * 0.3;
+        const wy = pad + (Math.random() - 0.15) * h * 0.3;
+        const ww = w * (0.5 + Math.random() * 0.7);
+        const wh = h * (0.5 + Math.random() * 0.7);
+
+        // Slight color variation per wash
+        const dr = (Math.random() - 0.5) * 35;
+        const dg = (Math.random() - 0.5) * 35;
+        const db = (Math.random() - 0.5) * 35;
+        const wr = Math.max(0, Math.min(255, r + dr));
+        const wg = Math.max(0, Math.min(255, g + dg));
+        const wb = Math.max(0, Math.min(255, b + db));
+        const alpha = 0.08 + Math.random() * 0.14;
+
+        // Use a radial gradient so wash density falls off — looks like paint
+        // settling rather than a hard-edged shape
+        const cx = wx + ww/2;
+        const cy2 = wy + wh/2;
+        const grad = octx.createRadialGradient(cx, cy2, 0, cx, cy2, Math.max(ww, wh)/2);
+        grad.addColorStop(0, `rgba(${Math.round(wr)},${Math.round(wg)},${Math.round(wb)},${alpha})`);
+        grad.addColorStop(0.7, `rgba(${Math.round(wr)},${Math.round(wg)},${Math.round(wb)},${alpha * 0.5})`);
+        grad.addColorStop(1, `rgba(${Math.round(wr)},${Math.round(wg)},${Math.round(wb)},0)`);
         octx.fillStyle = grad;
         octx.fillRect(pad, pad, w, h);
       }
 
-      // ── Layer 4: uneven edge — mask with blurred soft rect ────────────────
-      // Use a separate mask canvas so the edges are ragged, not uniform
+      // ── Layer 9: horizontal brush strokes (drag marks) ───────────────────
+      const numStrokes = 24 + Math.floor(Math.random() * 16);
+      for (let i = 0; i < numStrokes; i++) {
+        const sy = pad + Math.random() * h;
+        const sh = 2 + Math.random() * 6;
+        const sx = pad + (Math.random() - 0.3) * w * 0.2;
+        const sw_ = w * (0.5 + Math.random() * 0.55);
+        const dr = (Math.random()-0.5) * 40;
+        const dg = (Math.random()-0.5) * 40;
+        const db = (Math.random()-0.5) * 40;
+        const alpha = 0.05 + Math.random() * 0.12;
+        const sr = Math.max(0, Math.min(255, r + dr));
+        const sg = Math.max(0, Math.min(255, g + dg));
+        const sb = Math.max(0, Math.min(255, b + db));
+
+        // Stroke fades along its length
+        const grad = octx.createLinearGradient(sx, 0, sx + sw_, 0);
+        grad.addColorStop(0, `rgba(${Math.round(sr)},${Math.round(sg)},${Math.round(sb)},0)`);
+        grad.addColorStop(0.2 + Math.random()*0.3, `rgba(${Math.round(sr)},${Math.round(sg)},${Math.round(sb)},${alpha})`);
+        grad.addColorStop(0.7 + Math.random()*0.2, `rgba(${Math.round(sr)},${Math.round(sg)},${Math.round(sb)},${alpha})`);
+        grad.addColorStop(1, `rgba(${Math.round(sr)},${Math.round(sg)},${Math.round(sb)},0)`);
+        octx.fillStyle = grad;
+        octx.fillRect(sx, sy, sw_, sh);
+      }
+
+      // ── Layer 10: vertical drips ──────────────────────────────────────────
+      const numDrips = 2 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < numDrips; i++) {
+        const dx = pad + Math.random() * w;
+        const dy = pad + Math.random() * h * 0.4;
+        const dh = h * (0.15 + Math.random() * 0.5);
+        const dw = 1 + Math.random() * 3;
+        const alpha = 0.06 + Math.random() * 0.1;
+        const grad = octx.createLinearGradient(0, dy, 0, dy + dh);
+        grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
+        grad.addColorStop(0.3, `rgba(${r},${g},${b},${alpha})`);
+        grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        octx.fillStyle = grad;
+        octx.fillRect(dx, dy, dw, dh);
+      }
+
+      // ── Final mask: irregular soft edges ─────────────────────────────────
       const mc = document.createElement('canvas');
       mc.width = ow; mc.height = oh;
       const mctx = mc.getContext('2d');
 
-      // Draw the mask shape with slightly irregular insets per side
-      const insetTop    = blurRadius * (0.3 + Math.random() * 0.4);
-      const insetBottom = blurRadius * (0.3 + Math.random() * 0.4);
+      // Mask has irregular insets — each edge has variation along its length
+      const insetTop    = blurRadius * (0.3 + Math.random() * 0.5);
+      const insetBottom = blurRadius * (0.3 + Math.random() * 0.5);
       const insetLeft   = blurRadius * (0.15 + Math.random() * 0.25);
       const insetRight  = blurRadius * (0.15 + Math.random() * 0.25);
       mctx.fillStyle = '#fff';
       mctx.fillRect(pad + insetLeft, pad + insetTop, w - insetLeft - insetRight, h - insetTop - insetBottom);
 
-      // Blur the mask to create the soft feathered edge
+      // Add irregular bites taken out of edges - makes them ragged not uniform
+      mctx.globalCompositeOperation = 'destination-out';
+      const numBites = 8 + Math.floor(Math.random() * 8);
+      for (let i = 0; i < numBites; i++) {
+        const side = Math.floor(Math.random() * 4);
+        let bx, by, br;
+        const biteSize = blurRadius * (0.4 + Math.random() * 0.8);
+        if (side === 0) { // top
+          bx = pad + Math.random() * w;
+          by = pad + insetTop;
+          br = biteSize;
+        } else if (side === 1) { // right
+          bx = pad + w - insetRight;
+          by = pad + Math.random() * h;
+          br = biteSize;
+        } else if (side === 2) { // bottom
+          bx = pad + Math.random() * w;
+          by = pad + h - insetBottom;
+          br = biteSize;
+        } else { // left
+          bx = pad + insetLeft;
+          by = pad + Math.random() * h;
+          br = biteSize;
+        }
+        const grad = mctx.createRadialGradient(bx, by, 0, bx, by, br);
+        grad.addColorStop(0, 'rgba(255,255,255,1)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        mctx.fillStyle = grad;
+        mctx.fillRect(bx - br, by - br, br * 2, br * 2);
+      }
+      mctx.globalCompositeOperation = 'source-over';
+
+      // Blur the mask for soft edges
       let mid = mctx.getImageData(0,0,ow,oh);
-      mid = boxBlur(mid, blurRadius * 0.55);
-      mid = boxBlur(mid, blurRadius * 0.35);
+      mid = boxBlur(mid, blurRadius * 0.6);
+      mid = boxBlur(mid, blurRadius * 0.4);
       mctx.putImageData(mid, 0, 0);
 
-      // Apply mask to the painted rect via 'destination-in'
+      // Apply mask
       octx.globalCompositeOperation = 'destination-in';
       octx.drawImage(mc, 0, 0);
       octx.globalCompositeOperation = 'source-over';
@@ -373,7 +453,7 @@
       for (let i=0; i<n; i++) {
         const col = shiftColor(rects[i], 28);
         const softness = 0.10 + Math.random() * 0.10;
-        paintRect(ctx, pad, cy, rw, heights[i], col, softness);
+        paintRect(ctx, pad, cy, rw, heights[i], col, softness, palette.field);
         cy += heights[i] + gap;
       }
 

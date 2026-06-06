@@ -429,7 +429,7 @@
       const totalH = H * (0.68 + Math.random() * 0.14); // 68–82% of canvas
       const pad = W * (0.06 + Math.random() * 0.06);     // 6–12% side padding
       const rw = W - pad*2;
-      const gap = H * (0.02 + Math.random() * 0.03);
+      const gap = H * (0.005 + Math.random() * 0.008);   // very tight, almost touching
 
       let heights;
       if (n === 2) {
@@ -457,7 +457,6 @@
         cy += heights[i] + gap;
       }
 
-      addCanvasTexture(ctx, W, H);
       addGrain(ctx, W, H);
 
       canvas.style.display='block';
